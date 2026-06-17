@@ -1,0 +1,1576 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>人车共情系统</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;700&display=swap');
+        
+        body {
+            font-family: 'Noto Sans SC', sans-serif;
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+        }
+        
+        .glass-card {
+            background: rgba(255, 255, 255, 0.85);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            box-shadow: 0 8px 32px rgba(31, 38, 135, 0.15);
+        }
+        
+        .device-icon {
+            transition: all 0.3s ease;
+        }
+        
+        .device-icon:hover {
+            transform: translateY(-3px);
+        }
+        
+        .pulse-animation {
+            animation: pulse 2s infinite;
+        }
+        
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.7; }
+            100% { opacity: 1; }
+        }
+        
+        .progress-bar {
+            transition: width 1s ease-in-out;
+        }
+        
+        .prediction-card {
+            transition: all 0.3s ease;
+        }
+        
+        .prediction-card:hover {
+            transform: scale(1.02);
+            box-shadow: 0 12px 40px rgba(31, 38, 135, 0.25);
+        }
+        
+        .emotion-bar {
+            border-radius: 10px;
+            overflow: hidden;
+            box-shadow: inset 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        /* 滚动条美化 */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        
+        ::-webkit-scrollbar-track {
+            background: rgba(0,0,0,0.05);
+            border-radius: 10px;
+        }
+        
+        ::-webkit-scrollbar-thumb {
+            background: rgba(0,0,0,0.15);
+            border-radius: 10px;
+        }
+        
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(0,0,0,0.2);
+        }
+    </style>
+</head>
+<body class="min-h-screen">
+<div class="container mx-auto px-4 py-6">
+    <!-- 标题区域 -->
+    <div class="text-center mb-8">
+        <h1 class="text-3xl md:text-4xl font-bold text-gray-800 mb-2">
+            人车共情系统
+        </h1>
+        <p class="text-gray-600 text-lg">实时情绪检测 + AI驱动的智能设备调节</p>
+        <div class="flex justify-center items-center mt-4 space-x-4">
+            <div class="flex items-center">
+                <div class="w-3 h-3 rounded-full bg-green-500 mr-2"></div>
+                <span class="text-sm text-gray-600">情绪检测</span>
+            </div>
+            <div class="flex items-center">
+                <div class="w-3 h-3 rounded-full bg-blue-500 mr-2"></div>
+                <span class="text-sm text-gray-600">AI预测</span>
+            </div>
+            <div class="flex items-center">
+                <div id="mqttStatusDot" class="w-3 h-3 rounded-full bg-gray-400 mr-2"></div>
+                <span class="text-sm text-gray-600" id="mqttStatusText">MQTT 检测中</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="flex flex-col lg:flex-row gap-6">
+        <!-- 左侧主区域：视频流 - 调整为与右侧相同大小 -->
+        <div class="lg:w-1/2 flex flex-col">
+            <!-- 视频流区域 -->
+            <div class="glass-card rounded-2xl p-5 flex-grow flex flex-col">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-xl font-bold text-gray-800">实时视频流</h2>
+                    <div class="flex space-x-2">
+                        <button id="startButton" 
+                                class="bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white px-4 py-2 rounded-lg font-medium transition-all">
+                            开启
+                        </button>
+                        <button id="stopButton" 
+                                class="bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white px-4 py-2 rounded-lg font-medium transition-all">
+                            关闭
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- 视频容器，使其充满可用空间 -->
+                <div class="relative rounded-xl overflow-hidden border-2 border-gray-200 shadow-lg flex-grow">
+                    <img id="videoStream" 
+                        class="w-full h-full object-cover bg-gradient-to-br from-gray-900 to-gray-700"
+                        src="{{ url_for('video_feed') }}"/>
+                    
+                    <!-- 视频叠加信息 -->
+                    <div class="absolute top-4 left-4 bg-black bg-opacity-60 text-white px-4 py-2 rounded-lg">
+                        <span id="timeCounter" class="font-mono">00:00</span>
+                    </div>
+                </div>
+                
+                <div class="flex justify-center mt-4 space-x-3">
+                    <button onclick="manualPredict()" 
+                            class="bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white px-5 py-2.5 rounded-lg font-medium transition-all">
+                        手动预测
+                    </button>
+                    <button onclick="refreshPredictions()" 
+                            class="bg-gradient-to-r from-gray-500 to-gray-600 hover:from-gray-600 hover:to-gray-700 text-white px-5 py-2.5 rounded-lg font-medium transition-all">
+                        刷新
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 右侧区域：情绪图表和设备预测 -->
+        <div class="lg:w-1/2 space-y-6">
+            <!-- 情绪概率分布 -->
+            <div class="glass-card rounded-2xl p-5">
+                <div class="flex items-center justify-between mb-4">
+                    <h2 class="text-xl font-bold text-gray-800">
+                        <i class="fas fa-chart-pie mr-2 text-green-500"></i>情绪概率分布
+                    </h2>
+                    <div class="text-sm text-gray-500" id="emotionUpdateTime">刚刚更新</div>
+                </div>
+                
+                <div id="barChart" class="space-y-3"></div>
+                
+                <!-- 情绪趋势图 -->
+                <div class="mt-6">
+                    <div class="flex items-center mb-3">
+                        <h3 class="font-bold text-gray-700">
+                            <i class="fas fa-chart-line mr-2 text-purple-500"></i>情绪趋势
+                        </h3>
+                        <div class="ml-auto text-xs">
+                            <span class="px-2 py-1 bg-gray-100 rounded">最近10次</span>
+                        </div>
+                    </div>
+                    <div class="h-52">
+                        <canvas id="lineChart" class="w-full h-full"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- AI预测和设备状态区域 -->
+    <div class="mt-6 grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <!-- AI预测结果 -->
+        <div class="glass-card rounded-2xl p-5">
+            <div class="flex items-center justify-between mb-4">
+                <h2 class="text-xl font-bold text-gray-800">
+                    <i class="fas fa-robot mr-2 text-red-500"></i>AI设备动作预测
+                </h2>
+                <div class="flex items-center">
+                    <div class="w-2 h-2 rounded-full bg-green-500 mr-1 pulse-animation"></div>
+                    <span class="text-sm text-gray-600" id="predictionStatus">实时更新</span>
+                </div>
+            </div>
+            
+            <!-- 设备动作预测网格 -->
+            <div class="grid grid-cols-2 gap-4" id="predictionsGrid">
+                <!-- 这里会动态加载设备预测 -->
+                <div class="text-center py-8 text-gray-400">
+                    <i class="fas fa-cogs text-3xl mb-3"></i>
+                    <p>等待AI预测结果...</p>
+                </div>
+            </div>
+            
+            <!-- 预测配置 -->
+            <div class="mt-6 pt-4 border-t border-gray-200 space-y-3">
+                <div class="flex items-center justify-between">
+                    <div class="text-sm font-medium text-gray-700">
+                        <i class="fas fa-robot mr-1"></i> 自动检测预测
+                    </div>
+                    <button id="autoPredictToggle" type="button" onclick="toggleAutoPredict()"
+                            class="relative inline-flex h-8 w-16 items-center rounded-full transition-colors bg-gray-300"
+                            aria-pressed="false" title="开启/关闭自动预测">
+                        <span id="autoPredictKnob"
+                              class="inline-block h-6 w-6 transform rounded-full bg-white shadow transition-transform translate-x-1"></span>
+                    </button>
+                </div>
+                <div class="flex items-center justify-between text-xs text-gray-500">
+                    <span id="autoPredictLabel">自动预测：关闭</span>
+                    <span id="autoPredictHint">关闭时仅手动预测</span>
+                </div>
+                <div class="flex items-center justify-between pt-1">
+                    <div class="text-sm font-medium text-gray-700">
+                        <i class="fas fa-cog mr-1"></i> 预测间隔
+                    </div>
+                    <div class="flex items-center space-x-2">
+                        <button onclick="changeInterval(-1)" class="w-8 h-8 flex items-center justify-center bg-gray-200 rounded-lg hover:bg-gray-300">
+                            <i class="fas fa-minus"></i>
+                        </button>
+                        <div class="px-3 py-1 bg-white border rounded-lg">
+                            <span id="intervalValue" class="font-bold">5</span> 秒
+                        </div>
+                        <button onclick="changeInterval(1)" class="w-8 h-8 flex items-center justify-center bg-gray-200 rounded-lg hover:bg-gray-300">
+                            <i class="fas fa-plus"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 设备状态汇总 -->
+        <div class="glass-card rounded-2xl p-5">
+            <div class="flex items-center mb-4">
+                <h2 class="text-xl font-bold text-gray-800">
+                    <i class="fas fa-home mr-2 text-indigo-500"></i>设备状态
+                </h2>
+                <div class="ml-auto flex gap-2">
+                    <button onclick="closeAllDevices()"
+                            class="px-4 py-2 bg-gradient-to-r from-red-500 to-red-600 text-white rounded-lg text-sm font-medium"
+                            title="通过 MQTT 停止音乐、空调等全部设备">
+                        关闭所有设备
+                    </button>
+                    <button onclick="toggleAllDevices()" 
+                            class="px-4 py-2 bg-gradient-to-r from-indigo-500 to-indigo-600 text-white rounded-lg text-sm font-medium"
+                            title="强制所有设备执行当前 AI 预测动作（会继续放歌）">
+                        强制执行预测
+                    </button>
+                </div>
+            </div>
+            
+            <div class="grid grid-cols-3 gap-3" id="deviceStatusGrid">
+                <!-- 设备状态卡片会动态加载 -->
+                <div class="text-center py-8 text-gray-400">
+                    <i class="fas fa-plug text-2xl mb-2"></i>
+                    <p class="text-sm">设备连接中...</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- 语音控制 + 在线学习 -->
+        <div class="glass-card rounded-2xl p-5">
+            <div class="flex items-center mb-4">
+                <h2 class="text-xl font-bold text-gray-800">
+                    <i class="fas fa-microphone mr-2 text-rose-500"></i>语音控制
+                </h2>
+                <span class="ml-auto text-xs text-gray-500">强制打断当前动作</span>
+            </div>
+            <div class="flex flex-col gap-3">
+                <div class="flex gap-2">
+                    <input id="voiceTextInput" type="text" placeholder="文本命令：播放稳定音乐、空调降温、关闭所有"
+                           class="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-rose-300 outline-none"/>
+                    <button onclick="sendVoiceText()"
+                            class="px-4 py-2 bg-gradient-to-r from-rose-500 to-pink-600 text-white rounded-lg text-sm font-medium">
+                        发送
+                    </button>
+                </div>
+                <div class="flex gap-2">
+                    <button id="voiceListenBtn" type="button" onclick="listenVoiceCommand()"
+                            class="flex-1 px-4 py-2 bg-gradient-to-r from-violet-500 to-purple-600 text-white rounded-lg text-sm font-medium">
+                        <i class="fas fa-microphone mr-1"></i> 开始录音（离线识别）
+                    </button>
+                    <button id="voiceTestMicBtn" type="button" onclick="testMicrophone()"
+                            class="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg text-sm">
+                        测麦克风
+                    </button>
+                    <button onclick="showVoiceHelp()"
+                            class="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg text-sm">
+                        示例
+                    </button>
+                </div>
+                <p class="text-xs text-amber-600">麦克风音量请保持 70% 左右；识别差请下载大模型或改用文本框</p>
+                <div id="voiceMicDevice" class="text-xs text-gray-400 truncate"></div>
+                <div class="flex items-center gap-2">
+                    <span class="text-xs text-gray-400 shrink-0">音量</span>
+                    <div class="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
+                        <div id="voiceMicLevel" class="h-full w-0 bg-gradient-to-r from-green-400 to-emerald-500 transition-all duration-75"></div>
+                    </div>
+                    <span id="voiceMicLevelText" class="text-xs text-gray-400 w-8 text-right">0%</span>
+                </div>
+                <div id="voiceResult" class="text-xs text-gray-500 min-h-[1.25rem]"></div>
+            </div>
+
+            <div class="mt-5 pt-4 border-t border-gray-100">
+                <div class="flex items-center mb-2">
+                    <h3 class="font-bold text-gray-700 text-sm">
+                        <i class="fas fa-graduation-cap mr-1 text-indigo-500"></i>在线学习
+                    </h3>
+                    <span class="ml-auto text-xs text-gray-400" id="onlineLearningStatus">加载中...</span>
+                </div>
+                <p class="text-xs text-gray-500">系统会根据动作后情绪改善自动微调策略，适应您的习惯。</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// 全局变量
+const videoStream = document.getElementById("videoStream");
+const startButton = document.getElementById("startButton");
+const stopButton = document.getElementById("stopButton");
+const barChart = document.getElementById("barChart");
+const lineChartCtx = document.getElementById("lineChart").getContext("2d");
+const predictionsGrid = document.getElementById("predictionsGrid");
+const deviceStatusGrid = document.getElementById("deviceStatusGrid");
+const predictionStatus = document.getElementById("predictionStatus");
+const timeCounter = document.getElementById("timeCounter");
+const intervalValue = document.getElementById("intervalValue");
+const emotionUpdateTime = document.getElementById("emotionUpdateTime");
+
+let lineChart;
+let historyData = {};
+let timerInterval;
+let seconds = 0;
+let currentPrediction = null;
+let currentInterval = 5; // 默认5秒
+let autoPredictEnabled = false;
+
+function updateAutoPredictUI(enabled) {
+    autoPredictEnabled = !!enabled;
+    const toggle = document.getElementById('autoPredictToggle');
+    const knob = document.getElementById('autoPredictKnob');
+    const label = document.getElementById('autoPredictLabel');
+    const hint = document.getElementById('autoPredictHint');
+    if (!toggle || !knob) return;
+
+    if (autoPredictEnabled) {
+        toggle.className = 'relative inline-flex h-8 w-16 items-center rounded-full transition-colors bg-green-500';
+        knob.className = 'inline-block h-6 w-6 transform rounded-full bg-white shadow transition-transform translate-x-9';
+        toggle.setAttribute('aria-pressed', 'true');
+        if (label) label.textContent = '自动预测：开启';
+        if (hint) hint.textContent = '检测到人脸后定时推理';
+    } else {
+        toggle.className = 'relative inline-flex h-8 w-16 items-center rounded-full transition-colors bg-gray-300';
+        knob.className = 'inline-block h-6 w-6 transform rounded-full bg-white shadow transition-transform translate-x-1';
+        toggle.setAttribute('aria-pressed', 'false');
+        if (label) label.textContent = '自动预测：关闭';
+        if (hint) hint.textContent = '关闭时请点击「手动预测」';
+    }
+}
+
+async function loadAutoPredictConfig() {
+    try {
+        const response = await fetch('/config');
+        const data = await response.json();
+        if (data.prediction_interval) {
+            currentInterval = data.prediction_interval;
+            intervalValue.textContent = currentInterval;
+        }
+        updateAutoPredictUI(data.auto_predict);
+    } catch (e) {
+        console.error('加载配置失败', e);
+    }
+}
+
+async function toggleAutoPredict() {
+    const next = !autoPredictEnabled;
+    try {
+        const response = await fetch('/config', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ auto_predict: next })
+        });
+        const data = await response.json();
+        if (data.success) {
+            updateAutoPredictUI(data.auto_predict);
+            showToast(data.message, 'success');
+            getLatestPrediction();
+        } else {
+            showToast(data.message || '设置失败', 'error');
+        }
+    } catch (e) {
+        showToast('自动预测设置失败', 'error');
+    }
+}
+
+// 设备图标映射
+const deviceIcons = {
+    'music': { icon: 'fa-music', color: 'from-purple-500 to-pink-500' },
+    'ac': { icon: 'fa-snowflake', color: 'from-blue-500 to-cyan-500' },
+    'light': { icon: 'fa-lightbulb', color: 'from-yellow-500 to-orange-500' },
+    'aroma': { icon: 'fa-spa', color: 'from-green-500 to-teal-500' },
+    'massage': { icon: 'fa-hands', color: 'from-red-500 to-pink-500' }
+};
+
+// 设备中文名称
+const deviceNames = {
+    'music': '音乐系统',
+    'ac': '空调系统',
+    'light': '照明系统',
+    'aroma': '香薰系统',
+    'massage': '按摩系统'
+};
+
+const DEVICE_ORDER = ['music', 'ac', 'light', 'aroma', 'massage'];
+
+// 动作图标映射
+const actionIcons = {
+    '关闭': 'fa-power-off',
+    '维持不变': 'fa-pause',
+    '镇静': 'fa-heartbeat',
+    '提振': 'fa-battery-full',
+    '稳定': 'fa-balance-scale',
+    '共情': 'fa-hands-helping',
+    '专注': 'fa-bullseye',
+    '轻微降温': 'fa-temperature-low',
+    '轻微升温': 'fa-temperature-high',
+    '增强送风': 'fa-wind',
+    '减弱送风': 'fa-wind',
+    '提亮冷光': 'fa-lightbulb',
+    '提亮暖光': 'fa-lightbulb',
+    '降暗暖光': 'fa-lightbulb',
+    '降暗冷光': 'fa-lightbulb',
+    '柔和动态': 'fa-lightbulb',
+    '舒缓': 'fa-peace',
+    '平静': 'fa-dove',
+    '提神': 'fa-coffee',
+    '轻柔颈肩放松': 'fa-user',
+    '稳定背部舒缓': 'fa-user',
+    '全身恢复': 'fa-user',
+    '深层缓解': 'fa-user',
+    '轻度提神': 'fa-user'
+};
+
+// 中文情绪映射表
+const emotionTranslation = {
+    "neutral": "平静",
+    "happiness": "开心",
+    "happy": "开心",
+    "surprise": "惊讶",
+    "anger": "愤怒",
+    "angry": "愤怒",
+    "sadness": "悲伤",
+    "sad": "悲伤",
+    "disgust": "厌恶",
+    "fear": "恐惧",
+    "contempt": "轻蔑"
+};
+
+// 情绪颜色配置
+const emotionColors = {
+    "平静": "#9ca3af",  // 灰色
+    "惊讶": "#34d399",  // 绿色
+    "愤怒": "#f87171",  // 红色
+    "悲伤": "#60a5fa",  // 蓝色
+    "轻蔑": "#6366f1",  // 靛青
+    "开心": "#facc15",  // 黄色
+    "恐惧": "#fb923c",  // 橙色
+    "厌恶": "#a78bfa"   // 紫色
+};
+
+// 辅助函数：翻译 Key
+function translate(key) {
+    if (!key) return "未知";
+    if (Object.values(emotionTranslation).includes(key)) return key;
+    return emotionTranslation[key.toLowerCase()] || key;
+}
+
+// 辅助函数：获取情绪颜色
+function getEmotionColor(key) {
+    const cnKey = translate(key);
+    return emotionColors[cnKey] || "#cccccc";
+}
+
+// 初始化图表
+function initLineChart() {
+    lineChart = new Chart(lineChartCtx, {
+        type: 'line',
+        data: {
+            labels: [],
+            datasets: []
+        },
+        options: {
+            animation: { duration: 300 },
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    max: 100,
+                    title: {
+                        display: true,
+                        text: '概率 (%)',
+                        color: '#666'
+                    },
+                    grid: { color: 'rgba(0,0,0,0.05)' }
+                },
+                x: {
+                    ticks: { maxTicksLimit: 6, color: '#666' },
+                    grid: { display: false }
+                }
+            },
+            plugins: {
+                legend: {
+                    position: 'right',
+                    labels: {
+                        color: "#333",
+                        usePointStyle: true,
+                        boxWidth: 10,
+                        padding: 15
+                    }
+                },
+                tooltip: {
+                    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+                    titleColor: '#333',
+                    bodyColor: '#666',
+                    borderColor: '#ddd',
+                    borderWidth: 1,
+                    callbacks: {
+                        label: function(context) {
+                            return `${context.dataset.label}: ${context.raw.toFixed(1)}%`;
+                        }
+                    }
+                }
+            }
+        }
+    });
+}
+
+// 更新柱状图
+function updateBarChart(data) {
+    // 归一化数据
+    const total = Object.values(data).reduce((sum, val) => sum + val, 0);
+    const normalizedData = {};
+    for (const [key, value] of Object.entries(data)) {
+        const cnKey = translate(key);
+        normalizedData[cnKey] = total > 0 ? (value / total) * 100 : 0;
+    }
+    
+    barChart.innerHTML = "";
+    
+    // 按概率排序
+    const sortedEmotions = Object.entries(normalizedData)
+        .sort((a, b) => b[1] - a[1]);
+    
+    sortedEmotions.forEach(([emotion, prob]) => {
+        const percent = prob.toFixed(1);
+        const color = getEmotionColor(emotion);
+        
+        const wrapper = document.createElement("div");
+        wrapper.className = "space-y-1";
+        
+        wrapper.innerHTML = `
+            <div class="flex justify-between text-sm">
+                <span class="font-medium text-gray-700">${emotion}</span>
+                <span class="font-bold" style="color: ${color}">${percent}%</span>
+            </div>
+            <div class="emotion-bar w-full bg-gray-200 rounded-full h-2.5">
+                <div class="h-2.5 rounded-full transition-all duration-700" 
+                     style="width: ${percent}%; background-color: ${color}"></div>
+            </div>
+        `;
+        barChart.appendChild(wrapper);
+    });
+    
+    // 更新时间
+    emotionUpdateTime.textContent = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+}
+
+// 更新折线图
+function updateLineChart(data) {
+    // 归一化数据
+    const total = Object.values(data).reduce((sum, val) => sum + val, 0);
+    const normalizedData = {};
+    for (const [key, value] of Object.entries(data)) {
+        const cnKey = translate(key);
+        normalizedData[cnKey] = total > 0 ? (value / total) * 100 : 0;
+    }
+    
+    const timestamp = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+    
+    for (const [emotion, value] of Object.entries(normalizedData)) {
+        if (!historyData[emotion]) {
+            historyData[emotion] = [];
+            lineChart.data.datasets.push({
+                label: emotion,
+                data: [],
+                fill: false,
+                tension: 0.2,
+                borderColor: getEmotionColor(emotion),
+                borderWidth: 2,
+                pointRadius: 3,
+                pointHoverRadius: 5,
+                pointBackgroundColor: getEmotionColor(emotion)
+            });
+        }
+        historyData[emotion].push(value);
+        if (historyData[emotion].length > 10) historyData[emotion].shift();
+    }
+    
+    lineChart.data.labels.push(timestamp);
+    if (lineChart.data.labels.length > 10) lineChart.data.labels.shift();
+    
+    lineChart.data.datasets.forEach(dataset => {
+        const emotion = dataset.label;
+        dataset.data = historyData[emotion] || [];
+        dataset.borderColor = getEmotionColor(emotion);
+        dataset.pointBackgroundColor = getEmotionColor(emotion);
+    });
+    
+    lineChart.update();
+}
+
+// 获取最新预测结果
+async function getLatestPrediction() {
+    try {
+        const response = await fetch('/latest_prediction');
+        const data = await response.json();
+        
+        if (data && data.status !== "No prediction available yet") {
+            currentPrediction = data;
+            updatePredictionDisplay(data);
+            updateDeviceStatusDisplay(data);
+        } else {
+            predictionStatus.textContent = "等待预测中...";
+            predictionStatus.style.color = "#f59e0b";
+            const hint = data.hint || "请先开启视频并对准面部，或点击「手动预测」";
+            predictionsGrid.innerHTML = `
+                <div class="col-span-2 text-center py-8 text-gray-500">
+                    <i class="fas fa-hourglass-half text-3xl mb-3 text-amber-400"></i>
+                    <p class="text-sm font-medium mb-2">${hint}</p>
+                    <p class="text-xs text-gray-400">
+                        自动预测: ${data.auto_predict ? '开' : '关'} |
+                        情绪数据: ${data.has_emotion_data ? '有' : '无'} |
+                        摄像头: ${data.camera_active ? '开' : '关'}
+                    </p>
+                </div>`;
+        }
+    } catch (error) {
+        console.error("获取预测结果失败:", error);
+        predictionStatus.textContent = "获取失败";
+        predictionStatus.style.color = "#ef4444";
+    }
+}
+
+// 更新预测显示
+function updatePredictionDisplay(prediction) {
+    // 更新状态
+    predictionStatus.textContent = "已更新";
+    predictionStatus.style.color = "#10b981";
+    
+    // 更新预测动作网格
+    const actions = prediction.predicted_actions;
+    let html = '';
+    
+    for (const [device, info] of Object.entries(actions)) {
+        const deviceName = deviceNames[device] || device;
+        const actionName = info.action;
+        const probability = (info.probability * 100).toFixed(1);
+        const mqttInfo = prediction.mqtt_result && prediction.mqtt_result[device];
+        const runtime = info.runtime || '';
+        const mqttBadge = mqttInfo
+            ? (mqttInfo.status === 'sent'
+                ? '<span class="text-xs text-green-600"><i class="fas fa-check mr-1"></i>MQTT</span>'
+                : `<span class="text-xs text-gray-500">${mqttInfo.status || '跳过'}</span>`)
+            : '';
+        const execBadge = runtime
+            ? `<span class="text-xs ${runtime === '播放中' || runtime === '运行中' ? 'text-green-600' : 'text-gray-500'}">${runtime}</span>`
+            : '';
+        const statusBadge = execBadge || mqttBadge || '<span class="text-xs text-gray-400">-</span>';
+        const deviceIcon = deviceIcons[device] || { icon: 'fa-cog', color: 'from-gray-500 to-gray-600' };
+        const actionIcon = actionIcons[actionName] || 'fa-cog';
+        
+        // 根据概率设置颜色
+        let probColor = 'text-red-500';
+        if (probability >= 80) probColor = 'text-green-500';
+        else if (probability >= 60) probColor = 'text-yellow-500';
+        
+        html += `
+            <div class="prediction-card bg-white rounded-xl border border-gray-200 p-3 shadow-sm">
+                <div class="flex items-center mb-2">
+                    <div class="w-10 h-10 rounded-lg bg-gradient-to-r ${deviceIcon.color} flex items-center justify-center mr-3">
+                        <i class="fas ${deviceIcon.icon} text-white text-lg"></i>
+                    </div>
+                    <div class="flex-1">
+                        <div class="font-bold text-gray-800 text-sm">${deviceName}</div>
+                        <div class="text-xs text-gray-600">推荐动作</div>
+                    </div>
+                    <div class="text-right">
+                        <div class="${probColor} font-bold text-md">${probability}%</div>
+                        <div class="text-xs text-gray-500">置信度</div>
+                        ${statusBadge}
+                    </div>
+                </div>
+                
+                <div class="flex items-center justify-between p-2 bg-gray-50 rounded-lg">
+                    <div class="flex items-center">
+                        <i class="fas ${actionIcon} text-gray-700 mr-2 text-sm"></i>
+                        <span class="font-medium text-gray-800 text-sm">${actionName}</span>
+                    </div>
+                    <button onclick="executeAction('${device}', '${actionName}')" 
+                            class="px-2 py-1 bg-gradient-to-r from-blue-500 to-blue-600 text-white text-xs rounded-lg hover:from-blue-600 hover:to-blue-700 transition-all">
+                        执行
+                    </button>
+                </div>
+            </div>
+        `;
+    }
+    
+    predictionsGrid.innerHTML = html;
+}
+
+// 更新设备状态显示（基于 MQTT 设备端上报）
+function updateDeviceStatusDisplay(prediction) {
+    const actions = prediction.predicted_actions || {};
+    let html = '';
+
+    for (const [device, info] of Object.entries(actions)) {
+        const deviceName = deviceNames[device] || device;
+        const actionName = info.action;
+        const deviceIcon = deviceIcons[device] || { icon: 'fa-cog', color: 'from-gray-500 to-gray-600' };
+
+        const runtime = info.runtime || '';
+        const execStatus = info.exec_status || '';
+        const message = info.message || '';
+        const track = info.selected_track ? info.selected_track.split(/[/\\]/).pop() : '';
+
+        let isActive = false;
+        let statusText = '待机';
+        let statusColor = 'bg-gradient-to-r from-gray-400 to-gray-500';
+        let dotColor = 'bg-gray-400';
+        let textColor = 'text-gray-500';
+
+        const isOnline = info.device_online === true;
+        const isUnknown = info.device_online !== true && info.device_online !== false;
+        if (isUnknown && !runtime) {
+            statusText = '等待同步';
+            statusColor = 'bg-gradient-to-r from-gray-300 to-gray-400';
+            dotColor = 'bg-gray-400';
+            textColor = 'text-gray-500';
+        } else if (!isOnline && !runtime) {
+            statusText = '离线';
+            statusColor = 'bg-gradient-to-r from-gray-300 to-gray-400';
+            dotColor = 'bg-gray-400';
+            textColor = 'text-gray-500';
+        } else if (execStatus === 'executing' || runtime === '执行中') {
+            isActive = true;
+            statusText = '执行中';
+            statusColor = 'bg-gradient-to-r from-yellow-500 to-amber-500';
+            dotColor = 'bg-yellow-500';
+            textColor = 'text-yellow-600';
+        } else if (execStatus === 'playing' || runtime === '播放中') {
+            isActive = true;
+            statusText = '播放中';
+            statusColor = 'bg-gradient-to-r from-green-500 to-green-600';
+            dotColor = 'bg-green-500';
+            textColor = 'text-green-600';
+        } else if (execStatus === 'active' || runtime === '运行中') {
+            isActive = true;
+            statusText = '运行中';
+            statusColor = 'bg-gradient-to-r from-blue-500 to-blue-600';
+            dotColor = 'bg-blue-500';
+            textColor = 'text-blue-600';
+        } else if (runtime === '在线') {
+            statusText = '在线';
+            statusColor = 'bg-gradient-to-r from-teal-400 to-teal-500';
+            dotColor = 'bg-teal-500';
+            textColor = 'text-teal-600';
+        } else if (execStatus === 'missing_dir' || execStatus === 'empty_dir') {
+            statusText = runtime || '未配置';
+            statusColor = 'bg-gradient-to-r from-yellow-500 to-orange-500';
+            dotColor = 'bg-yellow-500';
+            textColor = 'text-yellow-600';
+        } else if (actionName !== '关闭' && actionName !== '维持不变') {
+            statusText = runtime || '已推荐';
+            statusColor = 'bg-gradient-to-r from-indigo-400 to-indigo-500';
+            dotColor = 'bg-indigo-400';
+            textColor = 'text-indigo-600';
+        }
+
+        const subText = track || message || actionName;
+
+        html += `
+            <div class="device-icon bg-white rounded-xl border border-gray-200 p-3 shadow-sm">
+                <div class="flex flex-col items-center text-center">
+                    <div class="w-12 h-12 rounded-full ${statusColor} flex items-center justify-center mb-2 ${isActive ? 'pulse-animation' : ''}">
+                        <i class="fas ${deviceIcon.icon} text-white text-lg"></i>
+                    </div>
+                    <div class="font-bold text-gray-800 text-sm mb-1">${deviceName}</div>
+                    <div class="text-xs text-gray-600 mb-1 truncate w-full" title="${subText}">${actionName}</div>
+                    ${track ? `<div class="text-xs text-purple-600 mb-1 truncate w-full" title="${track}">♪ ${track}</div>` : ''}
+                    <div class="flex items-center justify-center">
+                        <div class="w-2 h-2 rounded-full ${dotColor} mr-1"></div>
+                        <span class="text-xs font-medium ${textColor}">${statusText}</span>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    deviceStatusGrid.innerHTML = html;
+}
+
+// 无预测结果时，直接根据 MQTT 状态 topic 渲染设备卡片
+function renderStandaloneDeviceStatus(data) {
+    const runtime = data.runtime || {};
+    const listenerConnected = data.listener_connected !== false;
+    let html = '';
+
+    for (const device of DEVICE_ORDER) {
+        const deviceName = deviceNames[device] || device;
+        const deviceIcon = deviceIcons[device] || { icon: 'fa-cog', color: 'from-gray-500 to-gray-600' };
+        const status = runtime[device] || {};
+        const actionName = status.action || '—';
+        const runtimeText = status.runtime || '';
+        const execStatus = status.status || '';
+        const message = status.message || '';
+        const track = status.selected_track ? status.selected_track.split(/[/\\]/).pop() : '';
+
+        let statusText = '等待同步';
+        let statusColor = 'bg-gradient-to-r from-gray-300 to-gray-400';
+        let dotColor = 'bg-gray-400';
+        let textColor = 'text-gray-500';
+        let isActive = false;
+
+        if (!listenerConnected) {
+            statusText = '监听未连接';
+        } else if (status.online === true) {
+            if (execStatus === 'executing' || runtimeText === '执行中') {
+                isActive = true;
+                statusText = '执行中';
+                statusColor = 'bg-gradient-to-r from-yellow-500 to-amber-500';
+                dotColor = 'bg-yellow-500';
+                textColor = 'text-yellow-600';
+            } else if (execStatus === 'playing' || runtimeText === '播放中') {
+                isActive = true;
+                statusText = '播放中';
+                statusColor = 'bg-gradient-to-r from-green-500 to-green-600';
+                dotColor = 'bg-green-500';
+                textColor = 'text-green-600';
+            } else if (execStatus === 'active' || runtimeText === '运行中') {
+                isActive = true;
+                statusText = '运行中';
+                statusColor = 'bg-gradient-to-r from-blue-500 to-blue-600';
+                dotColor = 'bg-blue-500';
+                textColor = 'text-blue-600';
+            } else if (runtimeText === '在线' || execStatus === 'online') {
+                statusText = '在线';
+                statusColor = 'bg-gradient-to-r from-teal-400 to-teal-500';
+                dotColor = 'bg-teal-500';
+                textColor = 'text-teal-600';
+            } else if (runtimeText || execStatus) {
+                statusText = runtimeText || execStatus;
+                statusColor = 'bg-gradient-to-r from-indigo-400 to-indigo-500';
+                dotColor = 'bg-indigo-400';
+                textColor = 'text-indigo-600';
+            } else {
+                statusText = '在线';
+                statusColor = 'bg-gradient-to-r from-teal-400 to-teal-500';
+                dotColor = 'bg-teal-500';
+                textColor = 'text-teal-600';
+            }
+        } else if (status.online === false) {
+            statusText = '离线';
+        }
+
+        const subText = track || message || (status.online ? '已连接 MQTT' : '请先启动 run_all_devices.py');
+
+        html += `
+            <div class="device-icon bg-white rounded-xl border border-gray-200 p-3 shadow-sm">
+                <div class="flex flex-col items-center text-center">
+                    <div class="w-12 h-12 rounded-full ${statusColor} flex items-center justify-center mb-2 ${isActive ? 'pulse-animation' : ''}">
+                        <i class="fas ${deviceIcon.icon} text-white text-lg"></i>
+                    </div>
+                    <div class="font-bold text-gray-800 text-sm mb-1">${deviceName}</div>
+                    <div class="text-xs text-gray-600 mb-1 truncate w-full" title="${actionName}">${actionName}</div>
+                    ${track ? `<div class="text-xs text-purple-600 mb-1 truncate w-full" title="${track}">♪ ${track}</div>` : ''}
+                    <div class="flex items-center justify-center">
+                        <div class="w-2 h-2 rounded-full ${dotColor} mr-1"></div>
+                        <span class="text-xs font-medium ${textColor}">${statusText}</span>
+                    </div>
+                    <div class="text-xs text-gray-400 mt-1 truncate w-full" title="${subText}">${subText}</div>
+                </div>
+            </div>
+        `;
+    }
+
+    deviceStatusGrid.innerHTML = html;
+}
+
+// 手动触发预测
+async function manualPredict() {
+    try {
+        const response = await fetch('/manual_predict', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({})
+        });
+        
+        const result = await response.json();
+        if (result.success) {
+            currentPrediction = result.prediction;
+            updatePredictionDisplay(result.prediction);
+            updateDeviceStatusDisplay(result.prediction);
+            
+            // 显示成功提示
+            showToast('手动预测完成', 'success');
+        } else {
+            showToast(result.message || '预测失败', 'error');
+        }
+    } catch (error) {
+        console.error("手动预测失败:", error);
+        showToast('请求失败，请检查网络', 'error');
+    }
+}
+
+// 刷新预测
+function refreshPredictions() {
+    getLatestPrediction();
+    showToast('正在刷新预测...', 'info');
+}
+
+// 改变预测间隔
+function changeInterval(delta) {
+    currentInterval = Math.max(1, Math.min(60, currentInterval + delta));
+    intervalValue.textContent = currentInterval;
+    
+    fetch('/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ interval: currentInterval })
+    }).then(response => response.json())
+      .then(data => {
+          if (data.success) {
+              showToast(`预测间隔已设置为 ${currentInterval} 秒`, 'success');
+              startUpdatingPredictions();
+          }
+      });
+}
+
+// 语音：文本命令
+async function sendVoiceText() {
+    const input = document.getElementById('voiceTextInput');
+    const text = (input.value || '').trim();
+    if (!text) {
+        showToast('请输入语音命令文本', 'error');
+        return;
+    }
+    const resultEl = document.getElementById('voiceResult');
+    resultEl.textContent = '正在执行...';
+    try {
+        const response = await fetch('/api/voice/text', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text })
+        });
+        const result = await response.json();
+        resultEl.textContent = result.message || JSON.stringify(result);
+        if (result.success) {
+            showToast(result.message, 'success');
+            setTimeout(refreshDeviceStatus, 500);
+        } else {
+            showToast(result.message || '语音命令失败', 'error');
+        }
+    } catch (e) {
+        resultEl.textContent = '请求失败';
+        showToast('语音命令请求失败', 'error');
+    }
+}
+
+// 语音：浏览器本地录音 → 上传 WAV → 服务端 Vosk 离线识别 → 强制控制
+const VOICE_RECORD_SECONDS = 5;
+let _voiceMeterTimer = null;
+let _voiceMeterStop = null;
+
+function _sleep(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function _updateMicLevel(pct) {
+    const bar = document.getElementById('voiceMicLevel');
+    const text = document.getElementById('voiceMicLevelText');
+    const v = Math.max(0, Math.min(100, Math.round(pct)));
+    if (bar) bar.style.width = v + '%';
+    if (text) text.textContent = v + '%';
+}
+
+function _audioPeak(samples) {
+    let peak = 0;
+    for (let i = 0; i < samples.length; i++) {
+        const a = Math.abs(samples[i]);
+        if (a > peak) peak = a;
+    }
+    return peak;
+}
+
+function _startMicLevelMeter(stream) {
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    const audioContext = new AudioCtx();
+    const source = audioContext.createMediaStreamSource(stream);
+    const analyser = audioContext.createAnalyser();
+    analyser.fftSize = 256;
+    source.connect(analyser);
+    const data = new Uint8Array(analyser.frequencyBinCount);
+
+    _voiceMeterStop = () => {
+        if (_voiceMeterTimer) clearInterval(_voiceMeterTimer);
+        _voiceMeterTimer = null;
+        source.disconnect();
+        analyser.disconnect();
+        audioContext.close().catch(() => {});
+        _voiceMeterStop = null;
+    };
+
+    _voiceMeterTimer = setInterval(() => {
+        analyser.getByteTimeDomainData(data);
+        let sum = 0;
+        for (let i = 0; i < data.length; i++) {
+            const v = (data[i] - 128) / 128;
+            sum += v * v;
+        }
+        const rms = Math.sqrt(sum / data.length);
+        _updateMicLevel(Math.min(100, rms * 400));
+    }, 80);
+
+    return _voiceMeterStop;
+}
+
+async function _getMicStream() {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        throw new Error('当前浏览器不支持麦克风录音，请用 Chrome/Edge 打开');
+    }
+    const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            channelCount: 1,
+        },
+    });
+    const track = stream.getAudioTracks()[0];
+    const label = (track && track.label) ? track.label : '系统默认麦克风';
+    const deviceEl = document.getElementById('voiceMicDevice');
+    if (deviceEl) deviceEl.textContent = '当前设备: ' + label;
+    return { stream, label };
+}
+
+function _floatTo16BitPCM(float32) {
+    const out = new Int16Array(float32.length);
+    for (let i = 0; i < float32.length; i++) {
+        const s = Math.max(-1, Math.min(1, float32[i]));
+        out[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
+    }
+    return out;
+}
+
+function _encodeWavBlob(samples, sampleRate) {
+    const peak = _audioPeak(samples);
+    const out = new Float32Array(samples.length);
+    if (peak > 0.85) {
+        const scale = 0.72 / peak;
+        for (let i = 0; i < samples.length; i++) out[i] = samples[i] * scale;
+    } else {
+        out.set(samples);
+    }
+    const pcm = _floatTo16BitPCM(out);
+    const buffer = new ArrayBuffer(44 + pcm.length * 2);
+    const view = new DataView(buffer);
+    const writeStr = (offset, str) => {
+        for (let i = 0; i < str.length; i++) view.setUint8(offset + i, str.charCodeAt(i));
+    };
+    writeStr(0, 'RIFF');
+    view.setUint32(4, 36 + pcm.length * 2, true);
+    writeStr(8, 'WAVE');
+    writeStr(12, 'fmt ');
+    view.setUint32(16, 16, true);
+    view.setUint16(20, 1, true);
+    view.setUint16(22, 1, true);
+    view.setUint32(24, sampleRate, true);
+    view.setUint32(28, sampleRate * 2, true);
+    view.setUint16(32, 2, true);
+    view.setUint16(34, 16, true);
+    writeStr(36, 'data');
+    view.setUint32(40, pcm.length * 2, true);
+    let offset = 44;
+    for (let i = 0; i < pcm.length; i++, offset += 2) {
+        view.setInt16(offset, pcm[i], true);
+    }
+    return new Blob([buffer], { type: 'audio/wav' });
+}
+
+async function _recordWithMediaRecorder(stream, durationSec) {
+    const candidates = [
+        'audio/webm;codecs=opus',
+        'audio/webm',
+        'audio/ogg;codecs=opus',
+    ];
+    const mimeType = candidates.find((t) => window.MediaRecorder && MediaRecorder.isTypeSupported(t));
+    if (!mimeType) {
+        throw new Error('浏览器不支持 MediaRecorder 录音');
+    }
+
+    const recorder = new MediaRecorder(stream, { mimeType });
+    const parts = [];
+    recorder.ondataavailable = (e) => {
+        if (e.data && e.data.size > 0) parts.push(e.data);
+    };
+
+    const blobPromise = new Promise((resolve, reject) => {
+        recorder.onstop = () => resolve(new Blob(parts, { type: mimeType }));
+        recorder.onerror = () => reject(recorder.error || new Error('MediaRecorder 录音失败'));
+    });
+
+    recorder.start(200);
+    await _sleep(Math.max(1, durationSec) * 1000);
+    if (recorder.state !== 'inactive') recorder.stop();
+    const encodedBlob = await blobPromise;
+
+    const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    if (audioContext.state === 'suspended') await audioContext.resume();
+    const audioBuffer = await audioContext.decodeAudioData(await encodedBlob.arrayBuffer());
+    await audioContext.close();
+
+    const channel = audioBuffer.getChannelData(0);
+    const peak = _audioPeak(channel);
+    return {
+        blob: _encodeWavBlob(channel, audioBuffer.sampleRate),
+        peak,
+        durationSec: audioBuffer.duration,
+        sampleRate: audioBuffer.sampleRate,
+    };
+}
+
+async function recordVoiceWav(durationSec) {
+    const { stream, label } = await _getMicStream();
+    const stopMeter = _startMicLevelMeter(stream);
+
+    try {
+        const result = await _recordWithMediaRecorder(stream, durationSec);
+        const peakPct = Math.round(result.peak * 100);
+        result.deviceLabel = label;
+        result.peakPct = peakPct;
+
+        if (result.peak < 0.008) {
+            throw new Error(
+                `麦克风「${label}」几乎没收到声音（峰值 ${peakPct}%）。` +
+                '请检查 Windows 设置 → 系统 → 声音 → 输入设备是否为正确麦克风，并调高输入音量。'
+            );
+        }
+        if (result.peak >= 0.95) {
+            result.clipWarning = true;
+        }
+        if (peakPct < 3) {
+            result.lowVolumeWarning = true;
+        }
+        return result;
+    } finally {
+        stopMeter();
+        stream.getTracks().forEach((t) => t.stop());
+    }
+}
+
+async function testMicrophone() {
+    const btn = document.getElementById('voiceTestMicBtn');
+    const resultEl = document.getElementById('voiceResult');
+    btn.disabled = true;
+    resultEl.textContent = '正在测试麦克风 3 秒，请对着麦克风说话...';
+    _updateMicLevel(0);
+
+    let maxLevel = 0;
+    const showLevel = (pct) => {
+        if (pct > maxLevel) maxLevel = pct;
+        _updateMicLevel(pct);
+    };
+
+    try {
+        const { stream, label } = await _getMicStream();
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        const audioContext = new AudioCtx();
+        const source = audioContext.createMediaStreamSource(stream);
+        const analyser = audioContext.createAnalyser();
+        analyser.fftSize = 256;
+        source.connect(analyser);
+        const data = new Uint8Array(analyser.frequencyBinCount);
+        const timer = setInterval(() => {
+            analyser.getByteTimeDomainData(data);
+            let sum = 0;
+            for (let i = 0; i < data.length; i++) {
+                const v = (data[i] - 128) / 128;
+                sum += v * v;
+            }
+            showLevel(Math.min(100, Math.sqrt(sum / data.length) * 400));
+        }, 80);
+
+        await _sleep(3000);
+        clearInterval(timer);
+        source.disconnect();
+        analyser.disconnect();
+        await audioContext.close();
+        stream.getTracks().forEach((t) => t.stop());
+
+        if (maxLevel < 5) {
+            resultEl.textContent = `测试完成：「${label}」几乎无输入（最高 ${maxLevel}%）。请换默认录音设备或调高麦克风音量。`;
+            showToast('麦克风可能未正常工作', 'error');
+        } else {
+            resultEl.textContent = `测试完成：「${label}」正常，最高音量 ${maxLevel}%。可以开始录音识别。`;
+            showToast('麦克风工作正常', 'success');
+        }
+    } catch (e) {
+        const msg = e.name === 'NotAllowedError'
+            ? '麦克风权限被拒绝，请点击地址栏锁图标允许麦克风'
+            : (e.message || '麦克风测试失败');
+        resultEl.textContent = msg;
+        showToast(msg, 'error');
+    } finally {
+        btn.disabled = false;
+    }
+}
+
+function _blobToBase64(blob) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(String(reader.result || '').split(',')[1] || '');
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+    });
+}
+
+async function listenVoiceCommand() {
+    const btn = document.getElementById('voiceListenBtn');
+    const resultEl = document.getElementById('voiceResult');
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-circle text-red-300 mr-1"></i> 录音中...';
+    resultEl.textContent = `请说出命令（约 ${VOICE_RECORD_SECONDS} 秒），例如：「播放稳定音乐」`;
+
+    try {
+        const recorded = await recordVoiceWav(VOICE_RECORD_SECONDS);
+        const wavBlob = recorded.blob;
+        if (wavBlob.size < 44) {
+            throw new Error('录音文件无效，请重试');
+        }
+        const peakInfo = `设备: ${recorded.deviceLabel} | 峰值 ${recorded.peakPct}% | ${recorded.durationSec.toFixed(1)}s`;
+        const clipNote = recorded.clipWarning ? '（音量过大可能失真，请把系统麦克风调到 70%）' : '';
+        resultEl.textContent = `录音完成（${peakInfo}）${clipNote}，离线识别中...`;
+
+        const audioBase64 = await _blobToBase64(wavBlob);
+        const response = await fetch('/api/voice/listen', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ audio_base64: audioBase64 })
+        });
+        const result = await response.json();
+        const recognized = result.recognized_text || '';
+        const levelInfo = result.audio_peak != null ? ` | 服务端音量 ${Math.round(result.audio_peak * 100)}%` : '';
+        resultEl.textContent = recognized
+            ? `识别: ${recognized} | ${result.message || ''}${levelInfo}`
+            : ((result.message || '识别失败') + ` (${peakInfo}${levelInfo})`);
+
+        if (result.success) {
+            showToast(result.message, 'success');
+            setTimeout(refreshDeviceStatus, 500);
+        } else {
+            showToast(result.message || '语音命令失败', 'error');
+        }
+    } catch (e) {
+        const msg = e.name === 'NotAllowedError'
+            ? '麦克风权限被拒绝，请在浏览器中允许访问麦克风'
+            : (e.message || '录音失败');
+        resultEl.textContent = msg;
+        showToast(msg, 'error');
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-microphone mr-1"></i> 开始录音（离线识别）';
+    }
+}
+
+async function showVoiceHelp() {
+    try {
+        const response = await fetch('/api/voice/help');
+        const data = await response.json();
+        const examples = (data.examples || []).join('\n• ');
+        showToast('语音示例已显示在下方', 'info');
+        document.getElementById('voiceResult').textContent = '示例: ' + (data.examples || []).join(' / ');
+    } catch (e) {
+        showToast('无法加载语音示例', 'error');
+    }
+}
+
+async function refreshOnlineLearningStats() {
+    const el = document.getElementById('onlineLearningStatus');
+    if (!el) return;
+    try {
+        const response = await fetch('/api/online_learning/stats');
+        const data = await response.json();
+        if (!data.enabled) {
+            el.textContent = '未启用';
+            return;
+        }
+        el.textContent = `反馈 ${data.feedback_completed || 0} 次 | 更新 ${data.policy_updates || 0} 次 | 最近奖励 ${(data.last_avg_reward || 0).toFixed(3)}`;
+    } catch (e) {
+        el.textContent = '状态未知';
+    }
+}
+
+// 执行设备动作（通过 MQTT 下发）
+async function executeAction(device, action) {
+    showToast(`正在执行: ${deviceNames[device]} - ${action}`, 'info');
+    try {
+        const response = await fetch('/api/execute_action', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ device, action })
+        });
+        const result = await response.json();
+        if (result.success) {
+            showToast(result.message || `MQTT 已下发，等待设备执行`, 'success');
+            setTimeout(refreshDeviceStatus, 500);
+            setTimeout(getLatestPrediction, 800);
+        } else {
+            showToast(result.message || '下发失败', 'error');
+        }
+    } catch (error) {
+        console.error('执行动作失败:', error);
+        showToast('MQTT 下发失败，请检查 Broker 连接', 'error');
+    }
+}
+
+// 关闭全部设备（停止音乐播放等）
+async function closeAllDevices() {
+    showToast('正在关闭全部设备...', 'info');
+    try {
+        const response = await fetch('/api/close_all_devices', { method: 'POST' });
+        const result = await response.json();
+        if (result.success) {
+            showToast(result.message || '全部设备已关闭', 'success');
+            setTimeout(refreshDeviceStatus, 500);
+            setTimeout(getLatestPrediction, 800);
+        } else {
+            showToast(result.message || '关闭失败', 'error');
+        }
+    } catch (error) {
+        showToast('请求失败', 'error');
+    }
+}
+
+// 强制下发当前预测到全部设备
+async function toggleAllDevices() {
+    if (!currentPrediction || !currentPrediction.predicted_actions) {
+        showToast('暂无预测结果，请先开启视频并等待自动预测或点击「手动预测」', 'error');
+        return;
+    }
+    showToast('正在强制下发当前预测到全部设备...', 'info');
+    try {
+        const response = await fetch('/api/publish_latest', { method: 'POST' });
+        const result = await response.json();
+        if (result.success) {
+            showToast(result.message || '全部设备已强制执行当前预测', 'success');
+            setTimeout(refreshDeviceStatus, 500);
+            setTimeout(getLatestPrediction, 800);
+        } else {
+            showToast(result.message || '强制下发失败', 'error');
+        }
+    } catch (error) {
+        showToast('请求失败', 'error');
+    }
+}
+
+// 更新 MQTT 连接状态
+async function updateMqttStatus() {
+    try {
+        const response = await fetch('/mqtt_status');
+        const data = await response.json();
+        const dot = document.getElementById('mqttStatusDot');
+        const text = document.getElementById('mqttStatusText');
+        if (data.connected) {
+            dot.className = 'w-3 h-3 rounded-full bg-green-500 mr-2 pulse-animation';
+            text.textContent = 'MQTT 已连接';
+        } else if (data.publish_enabled) {
+            dot.className = 'w-3 h-3 rounded-full bg-yellow-500 mr-2';
+            text.textContent = 'MQTT 未连接';
+        } else {
+            dot.className = 'w-3 h-3 rounded-full bg-gray-400 mr-2';
+            text.textContent = 'MQTT 已禁用';
+        }
+    } catch (e) {
+        console.error('MQTT 状态获取失败', e);
+    }
+}
+
+// 显示提示
+function showToast(message, type = 'info') {
+    // 移除现有提示
+    const existingToast = document.querySelector('.toast-message');
+    if (existingToast) existingToast.remove();
+    
+    // 创建新提示
+    const toast = document.createElement('div');
+    toast.className = `toast-message fixed top-6 right-6 z-50 px-6 py-3 rounded-lg shadow-lg text-white font-medium transform transition-all duration-300 translate-x-0 opacity-0`;
+    
+    // 设置颜色
+    if (type === 'success') {
+        toast.style.backgroundColor = '#10b981';
+    } else if (type === 'error') {
+        toast.style.backgroundColor = '#ef4444';
+    } else if (type === 'info') {
+        toast.style.backgroundColor = '#3b82f6';
+    }
+    
+    toast.innerHTML = `
+        <div class="flex items-center">
+            <i class="fas ${type === 'success' ? 'fa-check-circle' : type === 'error' ? 'fa-exclamation-circle' : 'fa-info-circle'} mr-2"></i>
+            <span>${message}</span>
+        </div>
+    `;
+    
+    document.body.appendChild(toast);
+    
+    // 显示动画
+    setTimeout(() => {
+        toast.style.opacity = '1';
+        toast.style.transform = 'translateX(0)';
+    }, 10);
+    
+    // 3秒后消失
+    setTimeout(() => {
+        toast.style.opacity = '0';
+        toast.style.transform = 'translateX(100px)';
+        setTimeout(() => toast.remove(), 300);
+    }, 3000);
+}
+
+// 启动视频流和计时器
+startButton.addEventListener("click", () => {
+    videoStream.src = "/video_feed";
+    initLineChart();
+    
+    // 启动计时器
+    seconds = 0;
+    if (timerInterval) clearInterval(timerInterval);
+    timerInterval = setInterval(() => {
+        seconds++;
+        const mins = Math.floor(seconds / 60);
+        const secs = seconds % 60;
+        timeCounter.textContent = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    }, 1000);
+    
+    // 获取首次预测结果
+    getLatestPrediction();
+    
+    showToast('视频流已开启', 'success');
+});
+
+// 停止视频流
+stopButton.addEventListener("click", () => {
+    videoStream.src = "";
+    if (timerInterval) clearInterval(timerInterval);
+    showToast('视频流已关闭', 'info');
+});
+
+let predictionTimer = null;
+let chartTimer = null;
+let mqttTimer = null;
+let deviceStatusTimer = null;
+
+function stopAllPolling() {
+    if (predictionTimer) { clearInterval(predictionTimer); predictionTimer = null; }
+    if (chartTimer) { clearInterval(chartTimer); chartTimer = null; }
+    if (mqttTimer) { clearInterval(mqttTimer); mqttTimer = null; }
+    if (deviceStatusTimer) { clearInterval(deviceStatusTimer); deviceStatusTimer = null; }
+    if (timerInterval) { clearInterval(timerInterval); timerInterval = null; }
+    if (videoStream) videoStream.src = "";
+}
+
+window.addEventListener('beforeunload', stopAllPolling);
+window.addEventListener('pagehide', stopAllPolling);
+
+// 定期获取情绪数据
+function startUpdatingChart() {
+    if (chartTimer) clearInterval(chartTimer);
+    chartTimer = setInterval(async () => {
+        try {
+            const response = await fetch("/emotion_probs");
+            const data = await response.json();
+            
+            if (data && !data.status) {
+                updateBarChart(data);
+                updateLineChart(data);
+            }
+        } catch (e) {
+            // 服务已关闭时停止轮询
+            if (e.name === 'TypeError') stopAllPolling();
+        }
+    }, 1000);
+}
+
+// 定期获取预测结果（支持动态间隔）
+function startUpdatingPredictions() {
+    if (predictionTimer) clearInterval(predictionTimer);
+    getLatestPrediction();
+    predictionTimer = setInterval(getLatestPrediction, currentInterval * 1000);
+}
+
+// 页面加载后初始化
+// 定期刷新设备 MQTT 状态
+async function refreshDeviceStatus() {
+    try {
+        const response = await fetch('/device_status');
+        const data = await response.json();
+
+        if (currentPrediction && data.runtime) {
+            const actions = { ...currentPrediction.predicted_actions };
+            for (const [device, status] of Object.entries(data.runtime)) {
+                if (actions[device]) {
+                    actions[device] = {
+                        ...actions[device],
+                        runtime: status.runtime || actions[device].runtime,
+                        exec_status: status.status || actions[device].exec_status,
+                        message: status.message || actions[device].message,
+                        selected_track: status.selected_track || actions[device].selected_track,
+                        device_online: status.online === true ? true : (status.online === false ? false : null),
+                    };
+                }
+            }
+            currentPrediction.predicted_actions = actions;
+            updateDeviceStatusDisplay(currentPrediction);
+            updatePredictionDisplay(currentPrediction);
+        } else {
+            renderStandaloneDeviceStatus(data);
+        }
+
+        const text = document.getElementById('mqttStatusText');
+        if (text && data.online_count !== undefined) {
+            const base = text.textContent.split(' · ')[0];
+            if (data.online_count > 0) {
+                text.textContent = `${base} · 设备 ${data.online_count}/${data.device_count || 5} 在线`;
+            }
+        }
+    } catch (e) {
+        console.error('设备状态刷新失败', e);
+    }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    initLineChart();
+    startUpdatingChart();
+    startUpdatingPredictions();
+    updateMqttStatus();
+    refreshDeviceStatus();
+    refreshOnlineLearningStats();
+    mqttTimer = setInterval(updateMqttStatus, 5000);
+    deviceStatusTimer = setInterval(refreshDeviceStatus, 2000);
+    setInterval(refreshOnlineLearningStats, 8000);
+    
+    // 获取系统配置
+    loadAutoPredictConfig();
+});
+</script>
+</body>
+</html>

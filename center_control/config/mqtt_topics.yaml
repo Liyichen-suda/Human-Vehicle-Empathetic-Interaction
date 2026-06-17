@@ -1,0 +1,18 @@
+# MQTT Topic 约定
+# 控制中心发布: {topic_prefix}/{device}/control
+# 设备端上报:   {topic_prefix}/{device}/status
+
+topic_prefix: "cabin"
+
+devices:
+  - music
+  - ac
+  - light
+  - aroma
+  - massage
+
+control_suffix: "control"
+status_suffix: "status"
+
+# 控制中心汇总广播（可选，供监控订阅）
+broadcast_topic: "cabin/center/actions"

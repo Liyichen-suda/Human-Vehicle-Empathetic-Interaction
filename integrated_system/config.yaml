@@ -1,0 +1,45 @@
+# 人车共情闭环系统配置
+
+server:
+  host: "0.0.0.0"
+  port: 5000
+
+emotion:
+  camera_index: 0
+  # 留空则自动搜索 integrated_system/models/emotion/ 下的 ONNX 模型
+  model_path: ""
+  min_face_prob: 0.9
+  smooth_window: 8
+  smooth_min_samples: 2
+
+control:
+  center_control_root: "center_control"
+  publish_mqtt: true
+  sample_mode: false
+  default_fatigue: 50.0
+
+pipeline:
+  # 自动预测间隔（秒）
+  prediction_interval: 5.0
+  # 是否自动定时推理并 MQTT 下发（需先开启视频并检测到人脸）
+  auto_predict: true
+
+online_learning:
+  enabled: true
+  # 动作下发后等待多久采样情绪反馈（秒）
+  feedback_delay_s: 20
+  # 累积多少条有效反馈后做一次策略微更新
+  update_batch_size: 4
+  min_improvement: 0.001
+  save_every_updates: 2
+  preference_alpha: 0.15
+
+voice:
+  enabled: true
+  listen_duration: 5
+  # 识别引擎: whisper（更准，需 pip install faster-whisper）| vosk
+  stt_engine: "vosk"
+  whisper_model: "base"
+  whisper_compute_type: "int8"
+  # 识别差可换大模型: python scripts/download_vosk_model.py --model cn
+  vosk_model_path: "models/vosk-model-small-cn-0.22"

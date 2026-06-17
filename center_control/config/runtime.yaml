@@ -1,0 +1,32 @@
+# MQTT 设备控制中心运行配置
+
+mqtt:
+  broker: "localhost"
+  port: 1883
+  username: ""
+  password: ""
+  topic_prefix: "cabin"
+  qos: 1
+  retain: false
+
+model:
+  script: "model/v3.1.py"
+  checkpoint: "logs/checkpoints/UserState_fixed.pth"
+
+# 相同动作在冷却期内不重复下发
+cooldown_s:
+  music: 3
+  ac: 4
+  light: 2
+  aroma: 5
+  massage: 6
+
+logging:
+  enabled: true
+  log_file: "logs/control.log"
+
+devices:
+  # 音乐设备本地音频目录（相对 center_control 目录）
+  music_root: "assets/music"
+  execution:
+    max_queue_size: 5

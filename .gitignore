@@ -1,0 +1,38 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.env
+
+# 运行时
+*.pid
+integrated_system/logs/
+center_control/logs/*.log
+center_control/logs/*.jsonl
+center_control/logs/devices.pid
+integrated_system/logs/last_voice.wav
+
+# 大文件（用脚本下载，勿提交 GitHub）
+integrated_system/models/vosk-model*/
+integrated_system/models/emotion/*.onnx
+center_control/logs/checkpoints/*.pth
+center_control/data/*.pkl
+center_control/assets/music/**/*.mp3
+center_control/assets/music/**/*.wav
+center_control/assets/music/**/*.flac
+center_control/logs/action_preferences.json
+
+# 文档/演示（体积大，勿提交）
+*.pptx
+
+# 测试/临时
+test_manual.wav
+*.zip
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db

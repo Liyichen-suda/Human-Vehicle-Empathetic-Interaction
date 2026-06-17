@@ -1,0 +1,22 @@
+# 人车共情闭环系统 — 统一依赖
+
+# Web 主应用
+Flask>=3.0.0
+PyYAML>=6.0
+paho-mqtt>=1.6.0
+
+# 深度学习 / 推理
+torch>=2.0.0
+numpy>=1.24.0
+opencv-python>=4.8.0
+Pillow>=10.0.0
+facenet-pytorch>=2.6.0
+emotiefflib>=1.0
+onnxruntime>=1.16.0
+
+# 设备模拟（音乐播放）
+pygame>=2.5.0
+
+# 离线语音识别
+vosk>=0.3.45
+# 可选（识别更准）: pip install faster-whisper
