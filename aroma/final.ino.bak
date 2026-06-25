@@ -1,0 +1,267 @@
+#include <Adafruit_NeoPixel.h>
+
+/*
+  ESP32 四通道智能香薰机 + WS2812灯带
+  串口输入：
+  PH,1 / PL,2 / NH,3 / NL,1
+  STOP 停止喷雾并恢复待机呼吸灯
+*/
+
+// ====================== 香薰引脚 ======================
+const int scent_PH = 25;   // 右下：正向高强度
+const int scent_PL = 26;   // 左下：正向低强度
+const int scent_NH = 27;   // 左上：负向高强度
+const int scent_NL = 14;   // 右上：负向低强度
+
+// ====================== WS2812 ======================
+const int LED_PIN = 13;      // DIN 接 GPIO13
+const int NUM_PIXELS = 16;   // 修改成你的灯珠数量
+
+Adafruit_NeoPixel strip(NUM_PIXELS, LED_PIN, NEO_GRB + NEO_KHZ800);
+
+// ====================== 状态变量 ======================
+int currentPin = -1;
+int currentLevel = 0;
+
+bool idleMode = true;
+
+// 呼吸灯参数
+int breatheBrightness = 10;
+int breatheDirection = 1;
+unsigned long lastBreathUpdate = 0;
+
+// =====================================================
+
+void setup() {
+  Serial.begin(9600);
+
+  pinMode(scent_PH, OUTPUT);
+  pinMode(scent_PL, OUTPUT);
+  pinMode(scent_NH, OUTPUT);
+  pinMode(scent_NL, OUTPUT);
+
+  turnAllOff();
+
+  strip.begin();
+  strip.show();
+
+  Serial.println("ESP32 智能香薰机启动");
+  Serial.println("输入：PH,1 / PL,2 / NH,3 / NL,1");
+  Serial.println("输入 STOP 停止喷雾");
+}
+
+// =====================================================
+
+void loop() {
+
+  // 串口读取
+  if (Serial.available() > 0) {
+    String input = Serial.readStringUntil('\n');
+    input.trim();
+    parseCommand(input);
+  }
+
+  // 呼吸灯
+  if (idleMode) {
+    breathingOrange();
+  }
+
+  // 香薰工作
+  if (currentPin != -1 && currentLevel > 0) {
+    releaseOneScent(currentPin, currentLevel);
+  }
+}
+
+// =====================================================
+
+void parseCommand(String command) {
+
+  command.toUpperCase();
+
+  // STOP
+  if (command == "STOP") {
+
+    turnAllOff();
+
+    currentPin = -1;
+    currentLevel = 0;
+
+    idleMode = true;
+
+    Serial.println("所有香薰已停止");
+    return;
+  }
+
+  int commaIndex = command.indexOf(',');
+
+  if (commaIndex == -1) {
+    Serial.println("输入格式错误");
+    return;
+  }
+
+  String emotion = command.substring(0, commaIndex);
+  int level = command.substring(commaIndex + 1).toInt();
+
+  if (level < 1 || level > 3) {
+    Serial.println("浓度等级错误");
+    return;
+  }
+
+  int targetPin = -1;
+
+  // 关闭待机呼吸灯
+  idleMode = false;
+
+  // ====================== 情绪映射 ======================
+
+  if (emotion == "PH") {
+
+    targetPin = scent_PH;
+
+    // 青绿色
+    setLightColor(0, 180, 120);
+
+    Serial.println("PH → 青柠罗勒柑橘");
+
+  } 
+  else if (emotion == "PL") {
+
+    targetPin = scent_PL;
+
+    // 暖白色
+    setLightColor(255, 210, 120);
+
+    Serial.println("PL → 白玉兰");
+
+  } 
+  else if (emotion == "NH") {
+
+    targetPin = scent_NH;
+
+    // 紫色
+    setLightColor(150, 80, 255);
+
+    Serial.println("NH → 洋甘菊薰衣草");
+
+  } 
+  else if (emotion == "NL") {
+
+    targetPin = scent_NL;
+
+    // 冰蓝色
+    setLightColor(80, 220, 255);
+
+    Serial.println("NL → 薄荷");
+
+  } 
+  else {
+
+    Serial.println("情绪代码错误");
+    idleMode = true;
+    return;
+  }
+
+  // =====================================================
+
+  turnAllOff();
+
+  currentPin = targetPin;
+  currentLevel = level;
+
+  Serial.print("浓度等级：");
+  Serial.println(currentLevel);
+}
+
+// =====================================================
+
+void releaseOneScent(int targetPin, int level) {
+
+  int onTime;
+  int offTime;
+
+  // 三档浓度
+
+  if (level == 1) {
+
+    onTime = 1000;
+    offTime = 8000;
+
+  } 
+  else if (level == 2) {
+
+    onTime = 3000;
+    offTime = 5000;
+
+  } 
+  else {
+
+    onTime = 6000;
+    offTime = 2000;
+  }
+
+  turnAllOff();
+
+  digitalWrite(targetPin, HIGH);
+  delay(onTime);
+
+  digitalWrite(targetPin, LOW);
+  delay(offTime);
+}
+
+// =====================================================
+
+void turnAllOff() {
+
+  digitalWrite(scent_PH, LOW);
+  digitalWrite(scent_PL, LOW);
+  digitalWrite(scent_NH, LOW);
+  digitalWrite(scent_NL, LOW);
+}
+
+// =====================================================
+
+void setLightColor(int r, int g, int b) {
+
+  for (int i = 0; i < NUM_PIXELS; i++) {
+
+    strip.setPixelColor(i, strip.Color(r, g, b));
+  }
+
+  strip.show();
+}
+
+// =====================================================
+// 橙色呼吸灯
+// =====================================================
+
+void breathingOrange() {
+
+  if (millis() - lastBreathUpdate > 25) {
+
+    lastBreathUpdate = millis();
+
+    breatheBrightness += breatheDirection;
+
+    if (breatheBrightness >= 80) {
+      breatheDirection = -1;
+    }
+
+    if (breatheBrightness <= 10) {
+      breatheDirection = 1;
+    }
+
+    for (int i = 0; i < NUM_PIXELS; i++) {
+
+      strip.setPixelColor(
+        i,
+        strip.Color(
+          breatheBrightness,
+          breatheBrightness * 0.35,
+          0
+        )
+      );
+    }
+
+    strip.show();
+  }
+}

@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <title>香薰机控制台</title>
+  <style>
+    :root {
+      --bg: #0f1419;
+      --card: #1a2332;
+      --accent: #6366f1;
+      --accent2: #22d3ee;
+      --text: #e2e8f0;
+      --muted: #94a3b8;
+      --ok: #34d399;
+      --warn: #fbbf24;
+      --danger: #f87171;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: "Segoe UI", system-ui, sans-serif;
+      background: linear-gradient(160deg, #0f1419 0%, #1e1b4b 100%);
+      color: var(--text);
+      min-height: 100vh;
+      padding: 12px;
+      padding-bottom: 80px;
+    }
+    h1 { font-size: 1.25rem; font-weight: 700; margin-bottom: 4px; }
+    .sub { color: var(--muted); font-size: 0.8rem; margin-bottom: 16px; }
+    .card {
+      background: var(--card);
+      border-radius: 16px;
+      padding: 14px;
+      margin-bottom: 12px;
+      border: 1px solid rgba(255,255,255,0.06);
+    }
+    label { font-size: 0.75rem; color: var(--muted); display: block; margin-bottom: 4px; }
+    input[type=text], input[type=number] {
+      width: 100%; padding: 10px 12px; border-radius: 10px;
+      border: 1px solid rgba(255,255,255,0.1); background: #0f172a;
+      color: var(--text); font-size: 1rem;
+    }
+    .row { display: flex; gap: 8px; align-items: center; margin-top: 8px; }
+    .row input[type=range] { flex: 1; accent-color: var(--accent); }
+    .val { min-width: 36px; text-align: right; font-weight: 600; color: var(--accent2); }
+    .status-grid {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 0.8rem;
+    }
+    .status-item { background: #0f172a; border-radius: 10px; padding: 8px 10px; }
+    .status-item span { display: block; color: var(--muted); font-size: 0.7rem; }
+    .progress {
+      height: 6px; background: #0f172a; border-radius: 99px; overflow: hidden; margin-top: 10px;
+    }
+    .progress-bar {
+      height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent2));
+      transition: width 0.4s;
+    }
+    .modes {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+      gap: 8px;
+    }
+    .mode-btn {
+      border: none; border-radius: 12px; padding: 12px 8px;
+      background: #0f172a; color: var(--text); cursor: pointer;
+      font-size: 0.85rem; transition: transform 0.1s, background 0.2s;
+      border: 1px solid rgba(255,255,255,0.08);
+    }
+    .mode-btn:active { transform: scale(0.96); }
+    .mode-btn.primary { background: linear-gradient(135deg, #4338ca, #6366f1); border: none; }
+    .mode-btn.active { outline: 2px solid var(--accent2); }
+    .channels { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+    .ch-btn {
+      padding: 14px 0; border-radius: 12px; border: none; font-weight: 700;
+      cursor: pointer; color: #fff;
+    }
+    .ch-ph { background: #059669; }
+    .ch-pl { background: #d97706; }
+    .ch-nh { background: #7c3aed; }
+    .ch-nl { background: #0284c7; }
+    .footer-bar {
+      position: fixed; bottom: 0; left: 0; right: 0;
+      padding: 12px; background: rgba(15,20,25,0.95);
+      backdrop-filter: blur(8px); border-top: 1px solid rgba(255,255,255,0.08);
+      display: flex; gap: 10px;
+    }
+    .btn {
+      flex: 1; padding: 14px; border: none; border-radius: 12px;
+      font-size: 1rem; font-weight: 600; cursor: pointer;
+    }
+    .btn-run { background: linear-gradient(135deg, #4338ca, #6366f1); color: #fff; }
+    .btn-stop { background: var(--danger); color: #fff; flex: 0.6; }
+    .btn-save { background: #334155; color: #fff; flex: 0.5; }
+    .tag { display: inline-block; padding: 2px 8px; border-radius: 99px; font-size: 0.7rem; }
+    .tag-ok { background: rgba(52,211,153,0.2); color: var(--ok); }
+    .tag-busy { background: rgba(251,191,36,0.2); color: var(--warn); }
+    .tag-off { background: rgba(248,113,113,0.2); color: var(--danger); }
+    .toast {
+      position: fixed; top: 16px; left: 50%; transform: translateX(-50%);
+      background: #334155; padding: 10px 18px; border-radius: 99px; font-size: 0.85rem;
+      opacity: 0; transition: opacity 0.3s; pointer-events: none; z-index: 99;
+    }
+    .toast.show { opacity: 1; }
+  </style>
+</head>
+<body>
+  <h1>智能香薰机控制台</h1>
+  <p class="sub">手机 / 电脑均可 · 通过 ESP32 局域网 HTTP API 控制</p>
+
+  <div class="card">
+    <label>ESP32 IP 地址</label>
+    <div class="row">
+      <input type="text" id="hostInput" placeholder="例如 192.168.117.xxx" />
+      <button class="btn btn-save" id="saveHostBtn" style="flex:0.4;padding:10px">保存</button>
+    </div>
+    <p class="sub" style="margin-top:8px">串口日志里「IP 地址」一行即为此值，需与手机在同一 WiFi</p>
+  </div>
+
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+      <strong>实时状态</strong>
+      <span id="connTag" class="tag tag-off">未连接</span>
+    </div>
+    <div class="status-grid">
+      <div class="status-item"><span>模式</span><b id="stAction">—</b></div>
+      <div class="status-item"><span>运行</span><b id="stRuntime">—</b></div>
+      <div class="status-item"><span>通道</span><b id="stChannel">—</b></div>
+      <div class="status-item"><span>速度</span><b id="stSpeed">—</b></div>
+      <div class="status-item"><span>已运行</span><b id="stElapsed">—</b></div>
+      <div class="status-item"><span>剩余</span><b id="stRemain">—</b></div>
+    </div>
+    <div class="progress"><div class="progress-bar" id="progressBar" style="width:0%"></div></div>
+    <p class="sub" id="stMessage" style="margin-top:8px">—</p>
+    <p class="sub" id="stPhase" style="margin-top:4px;color:var(--muted)">阶段: —</p>
+  </div>
+
+  <div class="card">
+    <label>喷雾速度 <span id="speedVal" class="val">50</span>（相对模式基准微调）</label>
+    <div class="row">
+      <input type="range" id="speedRange" min="1" max="100" value="50" />
+    </div>
+    <label style="margin-top:12px">持续时间（秒，0=使用模式内置时长）</label>
+    <input type="number" id="durationInput" min="0" max="600" value="0" />
+    <label style="margin-top:8px;display:flex;align-items:center;gap:8px;color:var(--text)">
+      <input type="checkbox" id="continuousChk" /> 持续喷雾（直到手动停止，覆盖模式总时长）
+    </label>
+    <p class="sub" id="modeDesc" style="margin-top:10px;color:var(--accent2)">选中模式后显示内置喷洒策略</p>
+  </div>
+
+  <div class="card">
+    <strong style="display:block;margin-bottom:10px">控制中心模式</strong>
+    <div class="modes" id="primaryModes"></div>
+  </div>
+
+  <div class="card">
+    <strong style="display:block;margin-bottom:10px">扩展模式（预留）</strong>
+    <div class="modes" id="extraModes"></div>
+  </div>
+
+  <div class="card">
+    <strong style="display:block;margin-bottom:10px">直接通道控制</strong>
+    <div class="channels">
+      <button class="ch-btn ch-ph" data-ch="通道PH">PH</button>
+      <button class="ch-btn ch-pl" data-ch="通道PL">PL</button>
+      <button class="ch-btn ch-nh" data-ch="通道NH">NH</button>
+      <button class="ch-btn ch-nl" data-ch="通道NL">NL</button>
+    </div>
+  </div>
+
+  <div class="footer-bar">
+    <button class="btn btn-run" id="runSelectedBtn">执行选中模式</button>
+    <button class="btn btn-stop" id="stopBtn">停止</button>
+  </div>
+  <div class="toast" id="toast"></div>
+
+  <script>
+    const PRIMARY = ['平静', '舒缓', '提神'];
+    const EXTRA = ['专注', '共情', '振奋', '冥想', '净化', '浪漫', '深度放松', '派对', '夜灯'];
+    let selectedMode = '平静';
+    let pollTimer = null;
+    let modeCatalog = {};
+
+    const $ = (id) => document.getElementById(id);
+    const host = () => ($('hostInput').value || '').trim().replace(/\/$/, '');
+    const base = () => `http://${host()}`;
+
+    function toast(msg) {
+      const el = $('toast');
+      el.textContent = msg;
+      el.classList.add('show');
+      setTimeout(() => el.classList.remove('show'), 2200);
+    }
+
+    function renderModeButtons(containerId, list, primary = false) {
+      const box = $(containerId);
+      box.innerHTML = '';
+      list.forEach((name) => {
+        const btn = document.createElement('button');
+        btn.className = 'mode-btn' + (primary ? ' primary' : '') + (name === selectedMode ? ' active' : '');
+        btn.textContent = name;
+        btn.onclick = () => {
+          selectedMode = name;
+          document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
+          btn.classList.add('active');
+          updateModeDesc(name);
+        };
+        box.appendChild(btn);
+      });
+    }
+
+    async function api(path, opts = {}) {
+      const url = `${base()}${path}`;
+      const res = await fetch(url, { ...opts, headers: { 'Content-Type': 'application/json', ...(opts.headers || {}) } });
+      if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+      return res.json();
+    }
+
+    function updateModeDesc(name) {
+      const m = modeCatalog[name];
+      const el = $('modeDesc');
+      if (!m) { el.textContent = name + '：重新连接设备后加载策略说明'; return; }
+      el.textContent = `${name} | ${m.spray_desc || ''} | 总${m.session_sec}s 爆发${(m.burst_ms||0)/1000}s 开${(m.spray_on_ms||0)/1000}s/关${(m.spray_off_ms||0)/1000}s`;
+    }
+
+    async function loadModes() {
+      if (!host()) return;
+      try {
+        const data = await api('/api/modes');
+        modeCatalog = {};
+        (data.modes || []).forEach(m => { modeCatalog[m.action] = m; });
+        updateModeDesc(selectedMode);
+      } catch (e) { /* ignore */ }
+    }
+
+    async function refreshStatus() {
+      if (!host()) return;
+      try {
+        const s = await api('/api/status');
+        $('connTag').textContent = s.online ? (s.busy ? '执行中' : '在线') : '离线';
+        $('connTag').className = 'tag ' + (s.busy ? 'tag-busy' : 'tag-ok');
+        $('stAction').textContent = s.action || '—';
+        $('stRuntime').textContent = s.runtime || '—';
+        $('stChannel').textContent = (s.params && s.params.channel) || '—';
+        $('stSpeed').textContent = (s.params && s.params.speed != null) ? s.params.speed + '%' : '—';
+        $('stElapsed').textContent = (s.params && s.params.elapsed_s != null) ? s.params.elapsed_s.toFixed(1) + 's' : '—';
+        const rem = s.params && s.params.remaining_s;
+        $('stRemain').textContent = rem === -1 ? '持续' : (rem != null ? rem.toFixed(1) + 's' : '—');
+        $('stMessage').textContent = s.message || '';
+        $('stPhase').textContent = '阶段: ' + (s.phase || '—') + (s.params && s.params.spray_pattern ? ' | ' + s.params.spray_pattern : '');
+        $('progressBar').style.width = (s.progress_pct || 0) + '%';
+      } catch (e) {
+        $('connTag').textContent = '连接失败';
+        $('connTag').className = 'tag tag-off';
+      }
+    }
+
+    async function sendControl(action, force = true) {
+      if (!host()) { toast('请先填写 ESP32 IP'); return; }
+      const body = {
+        action,
+        speed: parseInt($('speedRange').value, 10),
+        duration_s: parseInt($('durationInput').value, 10) || 0,
+        continuous: $('continuousChk').checked,
+        force,
+      };
+      try {
+        await api('/api/control', { method: 'POST', body: JSON.stringify(body) });
+        toast('已发送: ' + action);
+        refreshStatus();
+      } catch (e) {
+        toast('发送失败: ' + e.message);
+      }
+    }
+
+    $('speedRange').oninput = () => { $('speedVal').textContent = $('speedRange').value; };
+    $('saveHostBtn').onclick = () => {
+      localStorage.setItem('aroma_host', host());
+      toast('IP 已保存');
+      loadModes();
+      refreshStatus();
+    };
+    $('runSelectedBtn').onclick = () => sendControl(selectedMode);
+    $('stopBtn').onclick = async () => {
+      if (!host()) return;
+      try {
+        await api('/api/stop', { method: 'POST', body: '{}' });
+        toast('已停止');
+        refreshStatus();
+      } catch (e) { toast('停止失败'); }
+    };
+    document.querySelectorAll('.ch-btn').forEach(btn => {
+      btn.onclick = () => sendControl(btn.dataset.ch);
+    });
+
+    const saved = localStorage.getItem('aroma_host');
+    if (saved) $('hostInput').value = saved;
+    renderModeButtons('primaryModes', PRIMARY, true);
+    renderModeButtons('extraModes', EXTRA);
+    updateModeDesc(selectedMode);
+    pollTimer = setInterval(refreshStatus, 2000);
+    loadModes();
+    refreshStatus();
+  </script>
+</body>
+</html>
